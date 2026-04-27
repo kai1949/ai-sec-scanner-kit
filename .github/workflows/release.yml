@@ -55,7 +55,7 @@ jobs:
           if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
             TAG="${GITHUB_REF_NAME}"
           else
-            TAG="${{ inputs.release_tag }}"
+            TAG="${{ github.event.inputs.release_tag }}"
           fi
           if [[ -z "$TAG" ]]; then
             echo "release tag is required" >&2
@@ -79,7 +79,7 @@ jobs:
         run: bash scripts/smoke-test.sh
 
       - name: Ensure tag exists for manual dispatch
-        if: github.event_name == 'workflow_dispatch' && inputs.push_tag
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.push_tag == 'true'
         shell: bash
         run: |
           TAG="${{ steps.tag.outputs.tag }}"
@@ -100,13 +100,13 @@ jobs:
           echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
 
       - name: Publish to npm
-        if: github.event_name == 'push' || inputs.publish_npm
+        if: github.event_name == 'push' || github.event.inputs.publish_npm == 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --access public
 
       - name: Create GitHub Release
-        if: (github.event_name == 'push') || inputs.create_github_release
+        if: github.event_name == 'push' || github.event.inputs.create_github_release == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
@@ -114,7 +114,7 @@ jobs:
           generate_release_notes: true
 
       - name: Sync to Gitee mirror (optional)
-        if: (github.event_name == 'push' || inputs.sync_gitee) && secrets.GITEE_SSH_PRIVATE_KEY != '' && secrets.GITEE_REPO_SSH != ''
+        if: (github.event_name == 'push' || github.event.inputs.sync_gitee == 'true') && secrets.GITEE_SSH_PRIVATE_KEY != '' && secrets.GITEE_REPO_SSH != ''
         shell: bash
         env:
           GITEE_SSH_PRIVATE_KEY: ${{ secrets.GITEE_SSH_PRIVATE_KEY }}
