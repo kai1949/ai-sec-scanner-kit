@@ -103,7 +103,31 @@ jobs:
         if: github.event_name == 'push' || github.event.inputs.publish_npm == 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public
+        shell: bash
+        run: |
+          if [[ -z "${NODE_AUTH_TOKEN:-}" ]]; then
+            echo "::error::NPM_TOKEN is empty or not configured in repository secrets"
+            exit 1
+          fi
+
+          set +e
+          OUTPUT="$(npm publish --access public 2>&1)"
+          STATUS=$?
+          set -e
+          echo "$OUTPUT"
+
+          if [[ $STATUS -ne 0 ]]; then
+            if echo "$OUTPUT" | grep -qiE 'ENEEDAUTH|E401|E403|auth|authorization|token'; then
+              echo "::error::npm auth failed. Check NPM_TOKEN validity, scope permissions, and 2FA bypass."
+            elif echo "$OUTPUT" | grep -qiE 'cannot publish over the previously published versions'; then
+              echo "::error::Version already published. Bump package version and retag."
+            elif echo "$OUTPUT" | grep -qiE 'You do not have permission to publish|forbidden|scope'; then
+              echo "::error::No publish permission for this package name. Use an owned scope/package."
+            else
+              echo "::error::npm publish failed. Check publish step logs for details."
+            fi
+            exit $STATUS
+          fi
 
       - name: Create GitHub Release
         if: github.event_name == 'push' || github.event.inputs.create_github_release == 'true'
