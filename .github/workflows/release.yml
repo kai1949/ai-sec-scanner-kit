@@ -1,0 +1,134 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Tag to release (example: v0.2.1)'
+        required: true
+        default: 'v0.2.0'
+      publish_npm:
+        description: 'Publish to npm'
+        required: true
+        type: boolean
+        default: true
+      create_github_release:
+        description: 'Create GitHub Release'
+        required: true
+        type: boolean
+        default: true
+      push_tag:
+        description: 'Create and push tag when manually triggered'
+        required: true
+        type: boolean
+        default: true
+      sync_gitee:
+        description: 'Sync tag and branch to Gitee mirror'
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      NODE_VERSION: '22'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release tag
+        id: tag
+        shell: bash
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            TAG="${{ inputs.release_tag }}"
+          fi
+          if [[ -z "$TAG" ]]; then
+            echo "release tag is required" >&2
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run tests
+        run: npm test
+
+      - name: Smoke test
+        run: bash scripts/smoke-test.sh
+
+      - name: Ensure tag exists for manual dispatch
+        if: github.event_name == 'workflow_dispatch' && inputs.push_tag
+        shell: bash
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists"
+          else
+            git tag "$TAG"
+            git push origin "$TAG"
+          fi
+
+      - name: Pack
+        id: pack
+        shell: bash
+        run: |
+          TARBALL=$(npm pack --cache /tmp/npm-cache | tail -n1)
+          echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to npm
+        if: github.event_name == 'push' || inputs.publish_npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
+
+      - name: Create GitHub Release
+        if: (github.event_name == 'push') || inputs.create_github_release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          files: ${{ steps.pack.outputs.tarball }}
+          generate_release_notes: true
+
+      - name: Sync to Gitee mirror (optional)
+        if: (github.event_name == 'push' || inputs.sync_gitee) && secrets.GITEE_SSH_PRIVATE_KEY != '' && secrets.GITEE_REPO_SSH != ''
+        shell: bash
+        env:
+          GITEE_SSH_PRIVATE_KEY: ${{ secrets.GITEE_SSH_PRIVATE_KEY }}
+          GITEE_REPO_SSH: ${{ secrets.GITEE_REPO_SSH }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$GITEE_SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H gitee.com >> ~/.ssh/known_hosts
+
+          git remote remove gitee 2>/dev/null || true
+          git remote add gitee "$GITEE_REPO_SSH"
+
+          TAG="${{ steps.tag.outputs.tag }}"
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            git push gitee HEAD:refs/heads/main
+          fi
+
+          git push gitee "refs/tags/$TAG:refs/tags/$TAG"

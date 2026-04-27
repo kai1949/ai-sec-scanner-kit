@@ -1,0 +1,9 @@
+---
+description: ai-sec-scanner-kit workflow rule
+globs:
+  - "**/*"
+alwaysApply: false
+---
+Use ai-sec-scanner-kit assets from `.cursor/ai-sec-scanner-kit/` for security scanning tasks.
+Run the standard phase order: architecture -> scanners -> verification -> reporting.
+Output directory must be `scan-results/`.
