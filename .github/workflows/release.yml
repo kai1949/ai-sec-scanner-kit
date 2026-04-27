@@ -114,12 +114,17 @@ jobs:
           generate_release_notes: true
 
       - name: Sync to Gitee mirror (optional)
-        if: (github.event_name == 'push' || github.event.inputs.sync_gitee == 'true') && secrets.GITEE_SSH_PRIVATE_KEY != '' && secrets.GITEE_REPO_SSH != ''
+        if: github.event_name == 'push' || github.event.inputs.sync_gitee == 'true'
         shell: bash
         env:
           GITEE_SSH_PRIVATE_KEY: ${{ secrets.GITEE_SSH_PRIVATE_KEY }}
           GITEE_REPO_SSH: ${{ secrets.GITEE_REPO_SSH }}
         run: |
+          if [[ -z "$GITEE_SSH_PRIVATE_KEY" || -z "$GITEE_REPO_SSH" ]]; then
+            echo "Skip Gitee sync: missing GITEE_SSH_PRIVATE_KEY or GITEE_REPO_SSH"
+            exit 0
+          fi
+
           mkdir -p ~/.ssh
           echo "$GITEE_SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
