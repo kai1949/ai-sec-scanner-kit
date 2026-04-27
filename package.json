@@ -1,6 +1,6 @@
 {
   "name": "ai-sec-scanner-kit",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Multi-runtime security scanning kit installer for OpenCode, Claude Code, Codex, Cursor, and Trae",
   "license": "Apache-2.0",
   "type": "commonjs",
