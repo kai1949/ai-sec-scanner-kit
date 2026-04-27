@@ -148,3 +148,11 @@ test('dry-run does not write manifest', async () => {
   const runtimeRoot = path.join(project, '.claude')
   await assert.rejects(fs.access(path.join(runtimeRoot, MANIFEST)))
 })
+
+test('bundled opencode dependency range matches published plugin versions', async () => {
+  const repoRoot = path.resolve(__dirname, '..')
+  const pkgPath = path.join(repoRoot, '.opencode', 'package.json')
+  const bundledPkg = JSON.parse(await fs.readFile(pkgPath, 'utf8'))
+
+  assert.equal(bundledPkg.dependencies['@opencode-ai/plugin'], '^1.4.0')
+})

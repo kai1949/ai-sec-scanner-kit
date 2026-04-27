@@ -33,7 +33,22 @@ Release job actions:
 
 ## Required GitHub Secrets
 
-- `NPM_TOKEN`: npm publish token
+- `NPM_TOKEN`: npm automation/granular access token with publish permission
+
+Fallback names supported by workflow, but not recommended as the primary path:
+
+- `NODE_AUTH_TOKEN` repository secret
+- `NPM_TOKEN` repository variable
+- `NODE_AUTH_TOKEN` repository variable
+
+Recommended setup:
+
+1. In npm, create an automation token or granular access token that can publish packages.
+2. In GitHub repo settings, set `Settings -> Secrets and variables -> Actions -> New repository secret`.
+3. Add the token as `NPM_TOKEN`.
+4. Re-run the `Release` workflow or push a new `v*` tag.
+
+The release workflow now prints which token source it resolved, without exposing the token value.
 
 ## Optional GitHub Secrets (Gitee sync)
 
@@ -49,4 +64,3 @@ Open GitHub Actions -> `Release` -> `Run workflow`:
 - keep `create_github_release=true`
 - enable `push_tag=true` for first-time tag creation
 - optionally enable `sync_gitee=true`
-

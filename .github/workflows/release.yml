@@ -99,16 +99,47 @@ jobs:
           TARBALL=$(npm pack --cache /tmp/npm-cache | tail -n1)
           echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
 
-      - name: Publish to npm
-        if: github.event_name == 'push' || github.event.inputs.publish_npm == 'true'
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN || secrets.NODE_AUTH_TOKEN || vars.NPM_TOKEN || vars.NODE_AUTH_TOKEN }}
+      - name: Resolve npm auth token
+        id: npm_auth
         shell: bash
+        env:
+          SECRET_NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          SECRET_NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
+          VAR_NPM_TOKEN: ${{ vars.NPM_TOKEN }}
+          VAR_NODE_AUTH_TOKEN: ${{ vars.NODE_AUTH_TOKEN }}
         run: |
-          if [[ -z "${NODE_AUTH_TOKEN:-}" ]]; then
-            echo "::error::NPM_TOKEN is empty or not configured in repository secrets"
+          TOKEN=""
+          SOURCE=""
+
+          if [[ -n "${SECRET_NPM_TOKEN:-}" ]]; then
+            TOKEN="$SECRET_NPM_TOKEN"
+            SOURCE="secrets.NPM_TOKEN"
+          elif [[ -n "${SECRET_NODE_AUTH_TOKEN:-}" ]]; then
+            TOKEN="$SECRET_NODE_AUTH_TOKEN"
+            SOURCE="secrets.NODE_AUTH_TOKEN"
+          elif [[ -n "${VAR_NPM_TOKEN:-}" ]]; then
+            TOKEN="$VAR_NPM_TOKEN"
+            SOURCE="vars.NPM_TOKEN"
+          elif [[ -n "${VAR_NODE_AUTH_TOKEN:-}" ]]; then
+            TOKEN="$VAR_NODE_AUTH_TOKEN"
+            SOURCE="vars.NODE_AUTH_TOKEN"
+          fi
+
+          if [[ -z "$TOKEN" ]]; then
+            echo "::error::No npm auth token found. Checked secrets.NPM_TOKEN, secrets.NODE_AUTH_TOKEN, vars.NPM_TOKEN, vars.NODE_AUTH_TOKEN."
             exit 1
           fi
+
+          echo "::add-mask::$TOKEN"
+          printf 'NODE_AUTH_TOKEN=%s\n' "$TOKEN" >> "$GITHUB_ENV"
+          echo "source=$SOURCE" >> "$GITHUB_OUTPUT"
+          echo "Resolved npm auth token from $SOURCE"
+
+      - name: Publish to npm
+        if: github.event_name == 'push' || github.event.inputs.publish_npm == 'true'
+        shell: bash
+        run: |
+          echo "Using npm auth source: ${{ steps.npm_auth.outputs.source }}"
 
           set +e
           OUTPUT="$(npm publish --access public 2>&1)"

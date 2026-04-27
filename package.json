@@ -4,9 +4,30 @@
   "description": "Multi-runtime security scanning kit installer for OpenCode, Claude Code, Codex, Cursor, and Trae",
   "license": "Apache-2.0",
   "type": "commonjs",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kai1949/ai-sec-scanner-kit.git"
+  },
+  "homepage": "https://github.com/kai1949/ai-sec-scanner-kit#readme",
+  "bugs": {
+    "url": "https://github.com/kai1949/ai-sec-scanner-kit/issues"
+  },
   "bin": {
     "ai-sec-scanner-kit": "bin/install.js",
     "sec-kit-install": "bin/install.js"
+  },
+  "files": [
+    "bin",
+    "lib",
+    ".opencode",
+    "templates",
+    "scripts/install-opencode-security-kit.sh",
+    "README.md",
+    "README_multi-agent1.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "engines": {
     "node": ">=20"

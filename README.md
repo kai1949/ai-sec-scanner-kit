@@ -115,9 +115,9 @@ opencode
 
 ## 发布流水线
 
-- CI: [.github/workflows/ci.yml](/home/kai/code/opencode-scope_exclusion/ai-sec-scanner-kit/.github/workflows/ci.yml)
-- Release: [.github/workflows/release.yml](/home/kai/code/opencode-scope_exclusion/ai-sec-scanner-kit/.github/workflows/release.yml)
-- 说明文档: [release-pipeline.md](/home/kai/code/opencode-scope_exclusion/ai-sec-scanner-kit/docs/release-pipeline.md)
+- CI: [.github/workflows/ci.yml](./.github/workflows/ci.yml)
+- Release: [.github/workflows/release.yml](./.github/workflows/release.yml)
+- 说明文档: [release-pipeline.md](./docs/release-pipeline.md)
 
 ## 旧脚本兼容
 
