@@ -8,7 +8,7 @@ Report content (per file):
 1. Scan summary - severity distribution table, verification status table (computed via SQL GROUP BY)
 2. Top 10 critical vulnerabilities - sorted by severity then confidence
 3. Attack surface analysis - from project_model.json entry_points
-4. Complete vulnerability details - grouped by verified_severity (Critical > High > Medium > Low), each with ID, type, CWE, location, description, confidence, data flow, code snippet
+4. Complete vulnerability details - grouped by verified_severity (Critical > High > Medium > Low), each with ID, type, CWE, location, description, confidence, data flow, code snippet. The confirmed report also includes CVSS v3.1 score, vector, and metric details when present in scoring_details.cvss_v3_1.
 5. Module distribution - cross-tabulation of modules x severity
 6. CWE distribution - count by CWE ID
 

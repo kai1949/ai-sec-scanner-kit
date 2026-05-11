@@ -66,7 +66,7 @@ report-generator db_path={DB_PATH} project_model_path={CONTEXT_DIR}/project_mode
 - 扫描摘要（严重性分布、验证状态分布）
 - Top 10 关键漏洞
 - 攻击面分析（从 project_model.json）
-- **全量漏洞详情**（按 verified_severity 分组，每个漏洞含 ID、类型、CWE、位置、描述、置信度、数据流）
+- **全量漏洞详情**（按 verified_severity 分组，每个漏洞含 ID、类型、CWE、位置、描述、置信度、数据流；已确认报告额外包含 CVSS v3.1 分数、向量和指标明细）
 - 模块漏洞分布交叉表
 - CWE 分布
 
@@ -129,7 +129,7 @@ report-generator db_path={DB_PATH} project_model_path={CONTEXT_DIR}/project_mode
 | 漏洞代码片段 | 非漏洞相关的代码 |
 | 达成路径（数据流） | 威胁模型分析 |
 | 严重性和CWE编号 | 扫描过程日志 |
-| 置信度评分 | 中间分析结果 |
+| 置信度评分、CVSS v3.1 评分 | 中间分析结果 |
 
 ## 与威胁分析报告的分工
 

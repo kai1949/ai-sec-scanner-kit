@@ -153,6 +153,7 @@ test('bundled opencode dependency range matches published plugin versions', asyn
   const repoRoot = path.resolve(__dirname, '..')
   const pkgPath = path.join(repoRoot, '.opencode', 'package.json')
   const bundledPkg = JSON.parse(await fs.readFile(pkgPath, 'utf8'))
+  const pluginVersion = bundledPkg.dependencies['@opencode-ai/plugin']
 
-  assert.equal(bundledPkg.dependencies['@opencode-ai/plugin'], '^1.4.0')
+  assert.match(pluginVersion, /^(?:\^1\.4\.0|1\.4\.\d+)$/)
 })

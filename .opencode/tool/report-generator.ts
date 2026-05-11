@@ -58,6 +58,38 @@ interface ProjectModel {
 }
 
 const SEVERITY_LEVELS = ["Critical", "High", "Medium", "Low"]
+const CVSS_METRIC_ORDER = ["AV", "AC", "PR", "UI", "S", "C", "I", "A"]
+const CVSS_METRIC_NAMES: Record<string, string> = {
+  AV: "Attack Vector",
+  AC: "Attack Complexity",
+  PR: "Privileges Required",
+  UI: "User Interaction",
+  S: "Scope",
+  C: "Confidentiality",
+  I: "Integrity",
+  A: "Availability",
+}
+const CVSS_METRIC_VALUE_LABELS: Record<string, Record<string, string>> = {
+  AV: { N: "Network", A: "Adjacent", L: "Local", P: "Physical" },
+  AC: { L: "Low", H: "High" },
+  PR: { N: "None", L: "Low", H: "High" },
+  UI: { N: "None", R: "Required" },
+  S: { U: "Unchanged", C: "Changed" },
+  C: { H: "High", L: "Low", N: "None" },
+  I: { H: "High", L: "Low", N: "None" },
+  A: { H: "High", L: "Low", N: "None" },
+}
+
+interface CvssDetails {
+  version?: string
+  vector?: string
+  score?: number | string
+  severity?: string
+  metrics?: Record<string, string>
+  metric_justification?: Record<string, string>
+  explanations?: Record<string, string>
+  notes?: string[] | string
+}
 
 function severitySortKey(s: string | null): number {
   const idx = SEVERITY_LEVELS.indexOf(s ?? "")
@@ -77,6 +109,138 @@ function parseJsonField(val: string | null): unknown {
   }
 }
 
+function isRecord(val: unknown): val is Record<string, unknown> {
+  return typeof val === "object" && val !== null && !Array.isArray(val)
+}
+
+function normalizeStringRecord(val: unknown): Record<string, string> | undefined {
+  if (!isRecord(val)) return undefined
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(val)) {
+    if (v == null) continue
+    out[k] = String(v)
+  }
+  return out
+}
+
+function getCvssDetails(scoringDetails: unknown): CvssDetails | null {
+  if (!isRecord(scoringDetails)) return null
+  const raw = scoringDetails.cvss_v3_1 ?? scoringDetails.cvss_v31 ?? scoringDetails.cvss
+  if (!raw) return null
+  const parsed = typeof raw === "string" ? parseJsonField(raw) : raw
+  if (!isRecord(parsed)) return null
+  return {
+    version: parsed.version == null ? undefined : String(parsed.version),
+    vector: parsed.vector == null ? undefined : String(parsed.vector),
+    score: typeof parsed.score === "number" || typeof parsed.score === "string" ? parsed.score : undefined,
+    severity: parsed.severity == null ? undefined : String(parsed.severity),
+    metrics: normalizeStringRecord(parsed.metrics),
+    metric_justification: normalizeStringRecord(parsed.metric_justification),
+    explanations: normalizeStringRecord(parsed.explanations),
+    notes: Array.isArray(parsed.notes) ? parsed.notes.map(String) : parsed.notes == null ? undefined : String(parsed.notes),
+  }
+}
+
+function cvssRoundUp(input: number): number {
+  return Math.ceil((input + 0.000001) * 10) / 10
+}
+
+function computeCvssBaseScore(metrics: Record<string, string> | undefined): number | null {
+  if (!metrics) return null
+  const av = { N: 0.85, A: 0.62, L: 0.55, P: 0.2 }[metrics.AV]
+  const ac = { L: 0.77, H: 0.44 }[metrics.AC]
+  const ui = { N: 0.85, R: 0.62 }[metrics.UI]
+  const scope = metrics.S
+  const pr =
+    scope === "C"
+      ? { N: 0.85, L: 0.68, H: 0.5 }[metrics.PR]
+      : { N: 0.85, L: 0.62, H: 0.27 }[metrics.PR]
+  const c = { H: 0.56, L: 0.22, N: 0 }[metrics.C]
+  const i = { H: 0.56, L: 0.22, N: 0 }[metrics.I]
+  const a = { H: 0.56, L: 0.22, N: 0 }[metrics.A]
+  if ([av, ac, pr, ui, c, i, a].some((x) => typeof x !== "number")) return null
+
+  const impact = 1 - (1 - c!) * (1 - i!) * (1 - a!)
+  if (impact <= 0) return 0
+  const impactSubScore =
+    scope === "C" ? 7.52 * (impact - 0.029) - 3.25 * Math.pow(impact - 0.02, 15) : 6.42 * impact
+  const exploitability = 8.22 * av! * ac! * pr! * ui!
+  const raw = scope === "C" ? Math.min(1.08 * (impactSubScore + exploitability), 10) : Math.min(impactSubScore + exploitability, 10)
+  return cvssRoundUp(raw)
+}
+
+function cvssSeverity(score: number | null): string {
+  if (score == null) return "Unknown"
+  if (score === 0) return "None"
+  if (score < 4) return "Low"
+  if (score < 7) return "Medium"
+  if (score < 9) return "High"
+  return "Critical"
+}
+
+function buildCvssVector(metrics: Record<string, string> | undefined): string | null {
+  if (!metrics) return null
+  const parts: string[] = []
+  for (const key of CVSS_METRIC_ORDER) {
+    const val = metrics[key]
+    if (!val) return null
+    parts.push(`${key}:${val}`)
+  }
+  return `CVSS:3.1/${parts.join("/")}`
+}
+
+function formatScalar(val: unknown): string {
+  if (val == null) return ""
+  if (typeof val === "object") return JSON.stringify(val)
+  return String(val)
+}
+
+function formatCvssSection(v: Vuln, includeCvssDetails: boolean): string[] {
+  if (!includeCvssDetails) return []
+  const lines: string[] = []
+  const scoringDetails = parseJsonField(v.scoring_details)
+  const cvss = getCvssDetails(scoringDetails)
+
+  if (!cvss) {
+    lines.push("**CVSS v3.1**: 未记录（旧扫描数据或验证阶段未写入 CVSS 指标）")
+    lines.push("")
+    return lines
+  }
+
+  const computedScore = computeCvssBaseScore(cvss.metrics)
+  const numericScore = typeof cvss.score === "number" ? cvss.score : cvss.score != null ? Number(cvss.score) : computedScore
+  const scoreNumber = Number.isFinite(numericScore) ? Number(numericScore) : null
+  const scoreLabel = scoreNumber == null ? "?" : scoreNumber.toFixed(1)
+  const severity = cvss.severity ?? cvssSeverity(scoreNumber ?? computedScore)
+  const vector = cvss.vector ?? buildCvssVector(cvss.metrics) ?? "未记录"
+
+  lines.push(`**CVSS v3.1**: ${scoreLabel} (${severity}) | **Vector**: \`${vector}\``)
+  lines.push("")
+
+  if (cvss.metrics) {
+    const justifications = cvss.metric_justification ?? cvss.explanations ?? {}
+    lines.push("| 指标 | 取值 | 判断依据 |")
+    lines.push("|------|------|----------|")
+    for (const key of CVSS_METRIC_ORDER) {
+      const value = cvss.metrics[key]
+      if (!value) continue
+      const metricName = CVSS_METRIC_NAMES[key] ?? key
+      const valueLabel = CVSS_METRIC_VALUE_LABELS[key]?.[value] ?? value
+      const why = escapeMarkdown(justifications[key] ?? "-")
+      lines.push(`| ${key} (${metricName}) | ${value} (${valueLabel}) | ${why} |`)
+    }
+    lines.push("")
+  }
+
+  if (cvss.notes) {
+    const notes = Array.isArray(cvss.notes) ? cvss.notes : [cvss.notes]
+    for (const note of notes) lines.push(`- CVSS 备注: ${note}`)
+    lines.push("")
+  }
+
+  return lines
+}
+
 function formatDataFlow(raw: string | null): string {
   if (!raw) return ""
   return raw
@@ -88,7 +252,11 @@ function formatSourceAgents(raw: string | null): string {
   return raw ?? "unknown"
 }
 
-function buildVulnDetailSection(vulns: Vuln[], startSection: number): { lines: string[]; nextSection: number } {
+function buildVulnDetailSection(
+  vulns: Vuln[],
+  startSection: number,
+  includeCvssDetails: boolean,
+): { lines: string[]; nextSection: number } {
   const lines: string[] = []
   const grouped: Record<string, Vuln[]> = {}
   for (const v of vulns) {
@@ -116,6 +284,7 @@ function buildVulnDetailSection(vulns: Vuln[], startSection: number): { lines: s
       const agents = formatSourceAgents(v.source_agents)
       lines.push(`**严重性**: ${sevLabel} | **CWE**: ${v.cwe ?? "N/A"} | **置信度**: ${v.confidence ?? "?"}/100 | **状态**: ${v.status} | **来源**: ${agents}`)
       lines.push("")
+      lines.push(...formatCvssSection(v, includeCvssDetails))
 
       const lineRange =
         v.line_start && v.line_end && v.line_end !== v.line_start ? `${v.line_start}-${v.line_end}` : String(v.line_start ?? "?")
@@ -160,10 +329,13 @@ function buildVulnDetailSection(vulns: Vuln[], startSection: number): { lines: s
           const parts: string[] = []
           for (const [k, val] of Object.entries(sd)) {
             if (k === "notes") continue
-            parts.push(`${k}: ${val}`)
+            if (k === "cvss_v3_1" || k === "cvss_v31" || k === "cvss") continue
+            parts.push(`${k}: ${formatScalar(val)}`)
           }
-          lines.push(`**评分明细**: ${parts.join(" | ")}`)
-          lines.push("")
+          if (parts.length > 0) {
+            lines.push(`**评分明细**: ${parts.join(" | ")}`)
+            lines.push("")
+          }
         }
       }
 
@@ -241,6 +413,7 @@ function buildSingleReport(opts: {
   moduleSeverity: Array<{ source_module: string; sev: string; cnt: number }>
   cweCounts: Array<{ cwe: string; cnt: number }>
   projectModel: ProjectModel
+  includeCvssDetails?: boolean
 }): string {
   const { vulns, projectModel } = opts
   const md: string[] = []
@@ -327,7 +500,7 @@ function buildSingleReport(opts: {
   md.push(`---`)
   md.push("")
 
-  const { lines: detailLines, nextSection } = buildVulnDetailSection(vulns, 3)
+  const { lines: detailLines, nextSection } = buildVulnDetailSection(vulns, 3, opts.includeCvssDetails ?? false)
   md.push(...detailLines)
 
   md.push(...buildDistributionSection(vulns, opts.moduleSeverity, opts.cweCounts, nextSection))
@@ -433,6 +606,7 @@ export default tool({
         vulns: confirmedVulns,
         moduleSeverity: queryModuleSeverity("CONFIRMED"),
         cweCounts: queryCweCounts("CONFIRMED"),
+        includeCvssDetails: true,
       })
 
       const unconfirmedReport = buildSingleReport({
